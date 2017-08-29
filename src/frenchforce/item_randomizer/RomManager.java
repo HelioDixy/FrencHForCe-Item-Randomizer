@@ -4,9 +4,23 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
+
+/**
+ * Cette classe permet de modifier la rom en effectuant une copie.
+ * Chaque modification implique la modification d'un ou de plusieurs octets.
+ * Pour effectuer une modification : 
+ *  - Instancier la classe avec le chemin de la rom
+ *  - Ajouter une modification comme ceci instance.addModif(new Modification(0x786DE,0xEF27)); - Ici, on modifie la morph par un reserve tank
+ *  - Appliquer les modifications : instance.applyModifications(../rom_rando.sfc);
+ *  - ATTENTION : Une fois appliquées, vous ne pouvez plus ajouter de modification ni les réappliquer.
+ * @author HélioDixy
+ *
+ */
 public class RomManager {
 	
 	private File f;
@@ -18,13 +32,18 @@ public class RomManager {
 	 * @param romPath
 	 */
 	public RomManager(String romPath) {
-		this.f = new File(romPath);
+		try {
+			this.f = new File(getClass().getResource(romPath).toURI());
+		} catch (URISyntaxException e) {
+			e.printStackTrace();
+		}
 		this.modifs = new ArrayList<Modification>();
 	}
 	
 	public void addModif(Modification f) {
 		if (modifs_applied) throw new IllegalStateException("Modifications are already applied.");
 		if (!this.modifs.contains(f)) this.modifs.add(f);
+		System.out.println("Nouvelle modif : " + f.getOffset() + " - " + Integer.toHexString(f.getValue()));
 	}
 	
 	public Modification[] getModifs() {
@@ -33,34 +52,40 @@ public class RomManager {
 	
 	public void applyModifications(String output) throws IOException {
 		if (!modifs_applied) {
+			File f2 = new File(output);
+			f2.createNewFile();
 			FileInputStream fis = new FileInputStream(f);
-			FileOutputStream fos = new FileOutputStream(new File(output));
-			byte[] b = new byte[1];
-			int offset = 0;
+			FileOutputStream fos = new FileOutputStream(f2);
+			byte[] b = new byte[8];
 			while (fis.available() > 0) {
 				fis.read(b);
-				for (Modification m: this.modifs) {
-					if (offset == m.getOffset()) b[0] = m.getValue();
-				}
 				fos.write(b);
 			}
 			fis.close();
 			fos.close();
+			RandomAccessFile raf = new RandomAccessFile(f2, "rw");
+			for (Modification m : this.modifs) {
+				raf.seek(m.getOffset());
+				byte r = raf.readByte();
+				raf.writeByte(m.getValue());
+				System.out.println("Wrote a byte at offset :" + raf.getFilePointer() + " - Replaced : " + Integer.toHexString(r) + " by " + Integer.toHexString(raf.readByte()));
+			}
+			raf.close();
 		} else throw new IllegalStateException("Modifications are already applied.");
 	}
 	
 	
 	public static class Modification {
 		
-		private byte offset;
+		private int offset;
 		private byte value;
 		
-		public Modification(byte offset, byte value) {
+		public Modification(int offset, byte value) {
 			this.offset = offset;
 			this.value = value;
 		}
 		
-		public byte getOffset() {
+		public int getOffset() {
 			return this.offset;
 		}
 		
@@ -68,7 +93,7 @@ public class RomManager {
 			return this.value;
 		}
 		
-		public void setOffset(byte offset) {
+		public void setOffset(int offset) {
 			this.offset = offset;
 		}
 		
